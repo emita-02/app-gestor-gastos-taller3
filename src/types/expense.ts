@@ -26,7 +26,7 @@ export const CATEGORIES: Category[] = [
   'Material académico',
   'Entretenimiento',
   'Salud',
-  'Otros',
+  'Otros',  
 ];
 
 /**
