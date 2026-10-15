@@ -179,6 +179,17 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                     multiline
                   />
                 </View>
+                <View style={styles.inputSection}>
+                  <Text style={styles.label}>Descripción (opcional)</Text>
+                  <TextInput
+                    style={[styles.input, styles.descriptionInput]}
+                    value={description}
+                    onChangeText={setDescription}
+                    placeholder="Ej: Almuerzo, transporte a la universidad..."
+                    placeholderTextColor={LiquidGlassColors.glassTextSecondary}
+                    multiline
+                  />
+                </View>
 
                 <View style={styles.buttonContainer}>
                   <TouchableOpacity
