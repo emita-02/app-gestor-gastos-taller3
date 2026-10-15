@@ -20,6 +20,20 @@ export async function initDatabase(db: SQLiteDatabase):Promise<void> {
         description TEXT
         );
     `);
+    // Migración para bases creadas antes de agregar factura_uri.
+    const columns = await db.getAllAsync<{ name: string }>(
+        'PRAGMA table_info(expenses)'
+    );
+
+    const hasFacturaUri = columns.some(
+        (column) => column.name === 'factura_uri'
+    );
+
+    if (!hasFacturaUri) {
+        await db.execAsync(
+        'ALTER TABLE expenses ADD COLUMN factura_uri TEXT'
+        );
+    }
 }
 
 

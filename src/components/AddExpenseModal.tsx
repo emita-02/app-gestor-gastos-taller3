@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   StyleSheet,
@@ -10,17 +10,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Image
 } from 'react-native';
 import Animated, { FadeIn, SlideInDown } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { Category, CATEGORIES, CATEGORY_ICONS } from '@/types/expense';
+import { Category, CATEGORIES, CATEGORY_ICONS, Expense } from '@/types/expense';
 import { LiquidGlassColors, Spacing } from '@/constants/theme';
 import { useExpenses } from '@/context/ExpenseContext';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 
 interface AddExpenseModalProps {
   visible: boolean;
   onClose: () => void;
+  expenseToEdit?: Expense | null;
 }
 
 // Modal que sube desde abajo para registrar un gasto.
@@ -28,35 +33,194 @@ interface AddExpenseModalProps {
 export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
   visible,
   onClose,
+  expenseToEdit = null,
 }) => {
-  const { addExpense } = useExpenses();
+  const { addExpense, updateExpense } = useExpenses();
   // El monto es string porque asi trabaja el TextInput; se pasa a numero al guardar
   const [amount, setAmount] = useState('');
   const [category, setCategory] = useState<Category | null>(null);
   const [description, setDescription] = useState('');
+  
+  const [date, setDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [facturaUri, setFacturaUri] = useState<string | null>(null);
+
+  
+  const pickFactura = async () => {
+    Alert.alert(
+      'Adjuntar comprobante',
+      '¿Cómo deseas agregar tu factura?',
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Elegir de galería',
+          onPress: () => {
+            void seleccionarDeGaleria();
+          },
+        },
+        {
+          text: 'Tomar fotografía',
+          onPress: () => {
+            void tomarFotografia();
+          },
+        },
+      ]
+    );
+  };
+
+  const guardarImagenLocal = async (uri: string) => {
+    const directory = FileSystem.documentDirectory;
+
+    if (!directory) {
+      throw new Error('No se encontró el directorio de documentos.');
+    }
+
+    const extension = uri.split('.').pop()?.split('?')[0] || 'jpg';
+    const destination =
+      `${directory}factura_${Date.now()}.${extension}`;
+
+    await FileSystem.copyAsync({
+      from: uri,
+      to: destination,
+    });
+
+    return destination;
+  };
+
+  const seleccionarDeGaleria = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const localUri = await guardarImagenLocal(
+          result.assets[0].uri
+        );
+        setFacturaUri(localUri);
+      }
+    } catch (error) {
+      console.error('Error al seleccionar factura:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen.');
+    }
+  };
+
+  const tomarFotografia = async () => {
+    try {
+      const permission =
+        await ImagePicker.requestCameraPermissionsAsync();
+
+      if (!permission.granted) {
+        Alert.alert(
+          'Permiso requerido',
+          'Debes permitir el acceso a la cámara para fotografiar tu factura.'
+        );
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const localUri = await guardarImagenLocal(
+          result.assets[0].uri
+        );
+        setFacturaUri(localUri);
+      }
+    } catch (error) {
+      console.error('Error al tomar fotografía:', error);
+      Alert.alert('Error', 'No se pudo tomar la fotografía.');
+    }
+  };
+
 
   // async porque ahora hay que esperar a que el gasto se guarde en el telefono
   const handleSubmit = async () => {
     if (!amount || !category) return;
  
     try {
-      await addExpense({
-        amount: parseFloat(amount),
-        category,
-        date: new Date(),
-        description: description.trim() || undefined,
-      });
+      const amountNumber = Number(amount);
+
+      if (!Number.isFinite(amountNumber) || amountNumber <= 0 || !category) {
+        Alert.alert('Datos inválidos', 'Ingresa un monto válido y selecciona una categoría.');
+        return;
+      }
+
+      
+      const handleSubmit = async () => {
+        if (!amount.trim()) {
+          Alert.alert('Campo obligatorio', 'Ingresa el monto del gasto.');
+          return;
+        }
+
+        if (!/^\d+(\.\d{1,2})?$/.test(amount)) {
+          Alert.alert(
+            'Monto inválido',
+            'Ingresa un monto numérico con máximo dos decimales.'
+          );
+          return;
+        }
+
+        if (Number(amount) <= 0) {
+          Alert.alert('Monto inválido', 'El monto debe ser mayor que cero.');
+          return;
+        }
+
+        if (!category) {
+          Alert.alert(
+            'Categoría obligatoria',
+            'Selecciona una categoría antes de guardar el gasto.'
+          );
+          return;
+        }
+
+        // Aquí continúa tu código actual para registrar
+        // o actualizar el gasto.
+      };
+
+      if (expenseToEdit) {
+        await updateExpense({
+          ...expenseToEdit,
+          amount: amountNumber,
+          category,
+          description: description.trim() || undefined,
+          // Si tu formulario tiene fecha:
+          date,
+          // Si implementaste facturaUri:
+          // facturaUri: facturaUri ?? undefined,
+        });
+      } else {
+        await addExpense({
+          amount: amountNumber,
+          category,
+          description: description.trim() || undefined,
+          date,
+          // Si implementaste facturaUri:
+          // facturaUri: facturaUri ?? undefined,
+        });
+      }
+
+      onClose();
     } catch (error) {
-      // Si no se pudo guardar, se avisa y el modal queda abierto con los datos
-      console.error('Error al guardar el gasto', error);
+      console.error('Error al guardar el gasto:', error);
       Alert.alert('Error', 'No se pudo guardar el gasto. Intenta de nuevo.');
-      return;
     }
  
     // Reset form
     setAmount('');
     setCategory(null);
     setDescription('');
+    setDate(new Date());
+    setShowDatePicker(false);
+    setFacturaUri(null);
     onClose();
   };
 
@@ -66,8 +230,34 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
     setAmount('');
     setCategory(null);
     setDescription('');
+    setDate(new Date());
+    setShowDatePicker(false);
+    setFacturaUri(null);
     onClose();
+
   };
+
+  useEffect(() => {
+    if (!visible) return;
+
+    if (expenseToEdit) {
+      setAmount(String(expenseToEdit.amount));
+      setCategory(expenseToEdit.category);
+      setDescription(expenseToEdit.description ?? '');
+      setDate(new Date(expenseToEdit.date));
+
+      // Si implementaste el campo de factura:
+      // setFacturaUri(expenseToEdit.facturaUri ?? null);
+    } else {
+      setAmount('');
+      setCategory(null);
+      setDescription('');
+      setDate(new Date());
+
+      // Si implementaste el campo de factura:
+      // setFacturaUri(null);
+    }
+  }, [visible, expenseToEdit]);
 
   return (
     <Modal
@@ -105,7 +295,9 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                 keyboardShouldPersistTaps="handled"
                 contentContainerStyle={styles.scrollContent}
               >
-                <Text style={styles.title}>Agregar Gasto</Text>
+                <Text style={styles.title}>
+                  {expenseToEdit ? 'Editar gasto': 'Nuevo gasto'}
+                </Text>
 
                 <View style={styles.inputSection}>
                   <Text style={styles.label}>Monto (USD)</Text>
@@ -114,12 +306,65 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                     <TextInput
                       style={styles.input}
                       value={amount}
-                      onChangeText={setAmount}
+                      onChangeText={(text) => {
+                        // Permite números y hasta dos decimales.
+                        const validFormat = /^\d*\.?\d{0,2}$/;
+
+                        if (validFormat.test(text)) {
+                          setAmount(text);
+                        }
+                      }}
                       placeholder="0.00"
                       keyboardType="decimal-pad"
                       placeholderTextColor={LiquidGlassColors.glassTextSecondary}
+                      maxLength={12}
                     />
                   </View>
+                </View>
+                
+                <View style={styles.inputSection}>
+                  <Text style={styles.label}>Fecha del gasto *</Text>
+
+                  <TouchableOpacity
+                    style={styles.dateButton}
+                    onPress={() => setShowDatePicker(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.dateButtonText}>
+                      📅 {date.toLocaleDateString('es-EC', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric',
+                      })}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showDatePicker && (
+                    <DateTimePicker
+                      value={date}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        if (Platform.OS !== 'ios') {
+                          setShowDatePicker(false);
+                        }
+
+                        if (selectedDate) {
+                          setDate(selectedDate);
+                        }
+                      }}
+                    />
+                  )}
+
+                  {Platform.OS === 'ios' && showDatePicker && (
+                    <TouchableOpacity
+                      style={styles.cancelDateButton}
+                      onPress={() => setShowDatePicker(false)}
+                    >
+                      <Text style={styles.dateButtonText}>Aceptar fecha</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
 
                 <View style={styles.inputSection}>
@@ -179,16 +424,42 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                     multiline
                   />
                 </View>
+
                 <View style={styles.inputSection}>
-                  <Text style={styles.label}>Descripción (opcional)</Text>
-                  <TextInput
-                    style={[styles.input, styles.descriptionInput]}
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Ej: Almuerzo, transporte a la universidad..."
-                    placeholderTextColor={LiquidGlassColors.glassTextSecondary}
-                    multiline
-                  />
+                  <Text style={styles.label}>
+                    Factura o comprobante (opcional)
+                  </Text>
+
+                  <TouchableOpacity
+                    style={styles.facturaButton}
+                    onPress={pickFactura}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.facturaButtonText}>
+                      📎 {facturaUri
+                        ? 'Cambiar comprobante'
+                        : 'Adjuntar imagen o tomar foto'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {facturaUri && (
+                    <View style={styles.facturaPreviewContainer}>
+                      <Image
+                        source={{ uri: facturaUri }}
+                        style={styles.facturaPreview}
+                        resizeMode="contain"
+                      />
+
+                      <TouchableOpacity
+                        onPress={() => setFacturaUri(null)}
+                        style={styles.removeFacturaButton}
+                      >
+                        <Text style={styles.removeFacturaText}>
+                          Quitar comprobante
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
 
                 <View style={styles.buttonContainer}>
@@ -213,7 +484,9 @@ export const AddExpenseModal: React.FC<AddExpenseModalProps> = ({
                       end={{ x: 1, y: 1 }}
                       style={styles.submitGradient}
                     >
-                      <Text style={styles.submitButtonText}>Agregar</Text>
+                      <Text style={styles.submitButtonText}>
+                        {expenseToEdit ? 'Guardar Cambios' : 'Agregar gasto'}
+                      </Text>
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
@@ -389,4 +662,64 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: LiquidGlassColors.glassTextLight,
   },
+  
+  dateButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: LiquidGlassColors.glassBorder,
+    padding: Spacing.three,
+  },
+
+  dateButtonText: {
+    fontSize: 15,
+    color: LiquidGlassColors.glassText,
+  },
+
+  cancelDateButton: {
+    alignSelf: 'flex-end',
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+
+  facturaButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.5)',
+    borderRadius: Spacing.two,
+    borderWidth: 1,
+    borderColor: LiquidGlassColors.glassBorder,
+    borderStyle: 'dashed',
+    padding: Spacing.three,
+    alignItems: 'center',
+  },
+
+  facturaButtonText: {
+    color: LiquidGlassColors.glassText,
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+
+  facturaPreviewContainer: {
+    marginTop: Spacing.two,
+    alignItems: 'center',
+  },
+
+  facturaPreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: Spacing.two,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+  },
+
+  removeFacturaButton: {
+    marginTop: Spacing.two,
+    padding: Spacing.two,
+  },
+
+  removeFacturaText: {
+    color: LiquidGlassColors.secondary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
 });

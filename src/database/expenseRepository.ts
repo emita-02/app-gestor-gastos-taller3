@@ -28,11 +28,39 @@ export async function getAllExpenses(db: SQLiteDatabase):Promise<Expense[]> {
 
 export async function insertExpense(db: SQLiteDatabase, expense: Expense):Promise<void> {
     await db.runAsync(
-        'INSERT INTO expenses (id, amount, category, date, description) VALUES (?, ?, ?, ?, ?)',
+        'INSERT INTO expenses (id, amount, category, date, description, factura_uri) VALUES (?,?, ?, ?, ?, ?)',
         expense.id,
         expense.amount,
         expense.category,
         expense.date.toISOString(), //Date -> texto ISO
-        expense.description ?? null //undefined -> NULL
+        expense.description ?? null, //undefined -> NULL
+        expense.facturaUri ?? null
     );
 }
+
+export async function updateExpense(
+  db: SQLiteDatabase,
+  expense: Expense
+): Promise<void> {
+  await db.runAsync(
+    `UPDATE expenses
+     SET amount = ?, category = ?, date = ?, description = ?
+     WHERE id = ?`,
+    expense.amount,
+    expense.category,
+    expense.date.toISOString(),
+    expense.description ?? null,
+    expense.id
+  );
+}
+
+export async function deleteExpense(
+  db: SQLiteDatabase,
+  id: string
+): Promise<void> {
+  await db.runAsync(
+    'DELETE FROM expenses WHERE id = ?',
+    id
+  );
+}
+

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Expense } from '@/types/expense';
 import { useSQLiteContext } from 'expo-sqlite';
-import { getAllExpenses, insertExpense } from '@/database/expenseRepository';
+import { getAllExpenses, insertExpense, updateExpense, deleteExpense, } from '@/database/expenseRepository';
  
 interface ExpenseContextType {
   expenses: Expense[];
@@ -11,6 +11,8 @@ interface ExpenseContextType {
   addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
   getMonthlyTotal: () => number;
   getCurrentMonthExpenses: () => Expense[];
+  updateExpense: (expense: Expense) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
 }
  
 // Arranca en undefined para poder avisar si alguien usa el hook sin Provider
@@ -79,6 +81,24 @@ export const ExpenseProvider: React.FC<{ children: ReactNode }> = ({ children })
       0
     );
   };
+
+  const updateExpenseHandler = async (updated: Expense) => {
+      await updateExpense(db, updated);
+
+      setExpenses((prev) =>
+        prev.map((expense) =>
+          expense.id === updated.id ? updated : expense
+        )
+      );
+    };
+
+    const deleteExpenseHandler = async (id: string) => {
+      await deleteExpense(db, id);
+
+      setExpenses((prev) =>
+        prev.filter((expense) => expense.id !== id)
+      );
+    };
  
   return (
     <ExpenseContext.Provider
@@ -86,6 +106,8 @@ export const ExpenseProvider: React.FC<{ children: ReactNode }> = ({ children })
         expenses,
         isLoading,
         addExpense,
+        updateExpense: updateExpenseHandler,
+        deleteExpense: deleteExpenseHandler,
         getMonthlyTotal,
         getCurrentMonthExpenses,
       }}
